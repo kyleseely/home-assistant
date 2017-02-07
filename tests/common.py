@@ -45,7 +45,6 @@ def get_test_home_assistant():
 
     hass = loop.run_until_complete(async_test_home_assistant(loop))
 
-    # FIXME should not be a daemon. Means hass.stop() not called in teardown
     stop_event = threading.Event()
 
     def run_loop():
@@ -55,8 +54,6 @@ def get_test_home_assistant():
         loop.run_forever()
         loop.close()
         stop_event.set()
-
-    threading.Thread(name="LoopThread", target=run_loop, daemon=True).start()
 
     orig_start = hass.start
     orig_stop = hass.stop
@@ -75,6 +72,8 @@ def get_test_home_assistant():
 
     hass.start = start_hass
     hass.stop = stop_hass
+
+    threading.Thread(name="LoopThread", target=run_loop, daemon=False).start()
 
     return hass
 
@@ -387,6 +386,11 @@ def mock_coro(return_value=None):
         return return_value
 
     return coro
+
+
+def mock_generator(return_value=None):
+    """Helper method to return a coro generator that returns a value."""
+    return mock_coro(return_value)()
 
 
 @contextmanager

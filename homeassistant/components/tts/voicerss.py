@@ -95,6 +95,7 @@ class VoiceRSSProvider(Provider):
         self.hass = hass
         self._extension = conf[CONF_CODEC]
         self._lang = conf[CONF_LANG]
+        self.name = 'VoiceRSS'
 
         self._form_data = {
             'key': conf[CONF_API_KEY],
@@ -114,7 +115,7 @@ class VoiceRSSProvider(Provider):
         return SUPPORT_LANGUAGES
 
     @asyncio.coroutine
-    def async_get_tts_audio(self, message, language):
+    def async_get_tts_audio(self, message, language, options=None):
         """Load TTS from VoiceRSS."""
         websession = async_get_clientsession(self.hass)
         form_data = self._form_data.copy()

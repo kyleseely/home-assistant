@@ -20,12 +20,18 @@ COMMENT_REQUIREMENTS = (
     'evdev',
     'pycups',
     'python-eq3bt',
-    'avion'
+    'avion',
+    'decora'
 )
 
 IGNORE_PACKAGES = (
     'homeassistant.components.recorder.models',
 )
+
+IGNORE_PIN = ('colorlog>2.1,<3', 'keyring>=9.3,<10.0', 'urllib3')
+
+URL_PIN = ('https://home-assistant.io/developers/code_review_platform/'
+           '#1-requirements')
 
 
 def explore_module(package, explore_children):
@@ -79,6 +85,10 @@ def gather_modules():
             continue
 
         for req in module.REQUIREMENTS:
+            if req.partition('==')[1] == '' and req not in IGNORE_PIN:
+                errors.append(
+                    "{}[Please pin requirement {}, see {}]".format(
+                        package, req, URL_PIN))
             reqs.setdefault(req, []).append(package)
 
     for key in reqs:

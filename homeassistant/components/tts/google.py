@@ -58,6 +58,7 @@ class GoogleProvider(Provider):
                            "AppleWebKit/537.36 (KHTML, like Gecko) "
                            "Chrome/47.0.2526.106 Safari/537.36")
         }
+        self.name = 'Google'
 
     @property
     def default_language(self):
@@ -70,7 +71,7 @@ class GoogleProvider(Provider):
         return SUPPORT_LANGUAGES
 
     @asyncio.coroutine
-    def async_get_tts_audio(self, message, language):
+    def async_get_tts_audio(self, message, language, options=None):
         """Load TTS from google."""
         from gtts_token import gtts_token
 
