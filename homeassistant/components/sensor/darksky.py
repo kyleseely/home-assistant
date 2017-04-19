@@ -13,7 +13,8 @@ from requests.exceptions import ConnectionError as ConnectError, \
 
 from homeassistant.components.sensor import PLATFORM_SCHEMA
 from homeassistant.const import (
-    CONF_API_KEY, CONF_NAME, CONF_MONITORED_CONDITIONS, ATTR_ATTRIBUTION)
+    CONF_API_KEY, CONF_NAME, CONF_MONITORED_CONDITIONS, ATTR_ATTRIBUTION,
+    CONF_LATITUDE, CONF_LONGITUDE)
 from homeassistant.helpers.entity import Entity
 from homeassistant.util import Throttle
 import homeassistant.helpers.config_validation as cv
@@ -41,7 +42,7 @@ SENSOR_TYPES = {
     'icon': ['Icon', None, None, None, None, None, None,
              ['currently', 'hourly', 'daily']],
     'nearest_storm_distance': ['Nearest Storm Distance',
-                               'km', 'm', 'km', 'km', 'm',
+                               'km', 'mi', 'km', 'km', 'mi',
                                'mdi:weather-lightning', ['currently']],
     'nearest_storm_bearing': ['Nearest Storm Bearing',
                               '°', '°', '°', '°', '°',
@@ -74,7 +75,7 @@ SENSOR_TYPES = {
                  ['currently', 'hourly', 'daily']],
     'pressure': ['Pressure', 'mbar', 'mbar', 'mbar', 'mbar', 'mbar',
                  'mdi:gauge', ['currently', 'hourly', 'daily']],
-    'visibility': ['Visibility', 'km', 'm', 'km', 'km', 'm', 'mdi:eye',
+    'visibility': ['Visibility', 'km', 'mi', 'km', 'km', 'mi', 'mdi:eye',
                    ['currently', 'hourly', 'daily']],
     'ozone': ['Ozone', 'DU', 'DU', 'DU', 'DU', 'DU', 'mdi:eye',
               ['currently', 'hourly', 'daily']],
@@ -97,12 +98,30 @@ SENSOR_TYPES = {
                              ['currently', 'hourly', 'daily']],
 }
 
+CONDITION_PICTURES = {
+    'clear-day': '/static/images/darksky/weather-sunny.svg',
+    'clear-night': '/static/images/darksky/weather-night.svg',
+    'rain': '/static/images/darksky/weather-pouring.svg',
+    'snow': '/static/images/darksky/weather-snowy.svg',
+    'sleet': '/static/images/darksky/weather-hail.svg',
+    'wind': '/static/images/darksky/weather-windy.svg',
+    'fog': '/static/images/darksky/weather-fog.svg',
+    'cloudy': '/static/images/darksky/weather-cloudy.svg',
+    'partly-cloudy-day': '/static/images/darksky/weather-partlycloudy.svg',
+    'partly-cloudy-night': '/static/images/darksky/weather-cloudy.svg',
+}
+
+
 PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
     vol.Required(CONF_MONITORED_CONDITIONS):
         vol.All(cv.ensure_list, [vol.In(SENSOR_TYPES)]),
     vol.Required(CONF_API_KEY): cv.string,
     vol.Optional(CONF_NAME, default=DEFAULT_NAME): cv.string,
     vol.Optional(CONF_UNITS): vol.In(['auto', 'si', 'us', 'ca', 'uk', 'uk2']),
+    vol.Inclusive(CONF_LATITUDE, 'coordinates',
+                  'Latitude and longitude must exist together'): cv.latitude,
+    vol.Inclusive(CONF_LONGITUDE, 'coordinates',
+                  'Latitude and longitude must exist together'): cv.longitude,
     vol.Optional(CONF_UPDATE_INTERVAL, default=timedelta(seconds=120)): (
         vol.All(cv.time_period, cv.positive_timedelta)),
     vol.Optional(CONF_FORECAST):
@@ -112,10 +131,9 @@ PLATFORM_SCHEMA = PLATFORM_SCHEMA.extend({
 
 def setup_platform(hass, config, add_devices, discovery_info=None):
     """Setup the Dark Sky sensor."""
-    # Validate the configuration
-    if None in (hass.config.latitude, hass.config.longitude):
-        _LOGGER.error("Latitude or longitude not set in Home Assistant config")
-        return False
+    # latitude and longitude are inclusive on config
+    latitude = config.get(CONF_LATITUDE, hass.config.latitude)
+    longitude = config.get(CONF_LONGITUDE, hass.config.longitude)
 
     if CONF_UNITS in config:
         units = config[CONF_UNITS]
@@ -126,8 +144,8 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
 
     forecast_data = DarkSkyData(
         api_key=config.get(CONF_API_KEY, None),
-        latitude=hass.config.latitude,
-        longitude=hass.config.longitude,
+        latitude=latitude,
+        longitude=longitude,
         units=units,
         interval=config.get(CONF_UPDATE_INTERVAL))
     forecast_data.update()
@@ -162,6 +180,7 @@ class DarkSkySensor(Entity):
         self.type = sensor_type
         self.forecast_day = forecast_day
         self._state = None
+        self._icon = None
         self._unit_of_measurement = None
 
     @property
@@ -187,6 +206,17 @@ class DarkSkySensor(Entity):
     def unit_system(self):
         """Return the unit system of this entity."""
         return self.forecast_data.unit_system
+
+    @property
+    def entity_picture(self):
+        """Return the entity picture to use in the frontend, if any."""
+        if self._icon is None or 'summary' not in self.type:
+            return None
+
+        if self._icon in CONDITION_PICTURES:
+            return CONDITION_PICTURES[self._icon]
+        else:
+            return None
 
     def update_unit_of_measurement(self):
         """Update units based on unit system."""
@@ -224,10 +254,12 @@ class DarkSkySensor(Entity):
             self.forecast_data.update_minutely()
             minutely = self.forecast_data.data_minutely
             self._state = getattr(minutely, 'summary', '')
+            self._icon = getattr(minutely, 'icon', '')
         elif self.type == 'hourly_summary':
             self.forecast_data.update_hourly()
             hourly = self.forecast_data.data_hourly
             self._state = getattr(hourly, 'summary', '')
+            self._icon = getattr(hourly, 'icon', '')
         elif self.forecast_day > 0 or (
                 self.type in ['daily_summary',
                               'temperature_min',
@@ -239,6 +271,7 @@ class DarkSkySensor(Entity):
             daily = self.forecast_data.data_daily
             if self.type == 'daily_summary':
                 self._state = getattr(daily, 'summary', '')
+                self._icon = getattr(daily, 'icon', '')
             else:
                 if hasattr(daily, 'data'):
                     self._state = self.get_state(
@@ -261,6 +294,9 @@ class DarkSkySensor(Entity):
 
         if state is None:
             return state
+
+        if 'summary' in self.type:
+            self._icon = getattr(data, 'icon', '')
 
         # Some state data needs to be rounded to whole values or converted to
         # percentages

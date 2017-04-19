@@ -42,11 +42,13 @@ def setup_platform(hass, config, add_devices, discovery_info=None):
     """Setup the Roku platform."""
     hosts = []
 
-    if discovery_info and discovery_info in KNOWN_HOSTS:
-        return
+    if discovery_info:
+        host = discovery_info[0]
 
-    if discovery_info is not None:
-        _LOGGER.debug('Discovered Roku: %s', discovery_info[0])
+        if host in KNOWN_HOSTS:
+            return
+
+        _LOGGER.debug('Discovered Roku: %s', host)
         hosts.append(discovery_info[0])
 
     elif CONF_HOST in config:
@@ -123,7 +125,10 @@ class RokuDevice(MediaPlayerDevice):
     @property
     def name(self):
         """Return the name of the device."""
-        return self.device_info.userdevicename
+        if self.device_info.userdevicename:
+            return self.device_info.userdevicename
+        else:
+            return "roku_" + self.roku.device_info.sernum
 
     @property
     def state(self):
@@ -142,8 +147,8 @@ class RokuDevice(MediaPlayerDevice):
         return STATE_UNKNOWN
 
     @property
-    def supported_media_commands(self):
-        """Flag of media commands that are supported."""
+    def supported_features(self):
+        """Flag media player features that are supported."""
         return SUPPORT_ROKU
 
     @property

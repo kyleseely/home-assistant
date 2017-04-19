@@ -13,6 +13,7 @@ from homeassistant.const import ATTR_ENTITY_ID, CONF_ICON, CONF_NAME
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.entity import Entity
 from homeassistant.helpers.entity_component import EntityComponent
+from homeassistant.helpers.restore_state import async_get_last_state
 
 
 DOMAIN = 'input_select'
@@ -57,10 +58,10 @@ SERVICE_SET_OPTIONS_SCHEMA = vol.Schema({
 def _cv_input_select(cfg):
     """Config validation helper for input select (Voluptuous)."""
     options = cfg[CONF_OPTIONS]
-    state = cfg.get(CONF_INITIAL, options[0])
-    if state not in options:
+    initial = cfg.get(CONF_INITIAL)
+    if initial is not None and initial not in options:
         raise vol.Invalid('initial state "{}" is not part of the options: {}'
-                          .format(state, ','.join(options)))
+                          .format(initial, ','.join(options)))
     return cfg
 
 
@@ -116,9 +117,9 @@ def async_setup(hass, config):
     for object_id, cfg in config[DOMAIN].items():
         name = cfg.get(CONF_NAME)
         options = cfg.get(CONF_OPTIONS)
-        state = cfg.get(CONF_INITIAL, options[0])
+        initial = cfg.get(CONF_INITIAL)
         icon = cfg.get(CONF_ICON)
-        entities.append(InputSelect(object_id, name, state, options, icon))
+        entities.append(InputSelect(object_id, name, initial, options, icon))
 
     if not entities:
         return False
@@ -186,13 +187,25 @@ def async_setup(hass, config):
 class InputSelect(Entity):
     """Representation of a select input."""
 
-    def __init__(self, object_id, name, state, options, icon):
+    def __init__(self, object_id, name, initial, options, icon):
         """Initialize a select input."""
         self.entity_id = ENTITY_ID_FORMAT.format(object_id)
         self._name = name
-        self._current_option = state
+        self._current_option = initial
         self._options = options
         self._icon = icon
+
+    @asyncio.coroutine
+    def async_added_to_hass(self):
+        """Called when entity about to be added to hass."""
+        if self._current_option is not None:
+            return
+
+        state = yield from async_get_last_state(self.hass, self.entity_id)
+        if not state or state.state not in self._options:
+            self._current_option = self._options[0]
+        else:
+            self._current_option = state.state
 
     @property
     def should_poll(self):

@@ -122,8 +122,6 @@ def set_away_mode(hass, away_mode, entity_id=None):
     if entity_id:
         data[ATTR_ENTITY_ID] = entity_id
 
-    _LOGGER.warning(
-        'This service has been deprecated; use climate.set_hold_mode')
     hass.services.call(DOMAIN, SERVICE_SET_AWAY_MODE, data)
 
 
@@ -226,7 +224,7 @@ def async_setup(hass, config):
             if not climate.should_poll:
                 continue
 
-            update_coro = hass.loop.create_task(
+            update_coro = hass.async_add_job(
                 climate.async_update_ha_state(True))
             if hasattr(climate, 'async_update'):
                 update_tasks.append(update_coro)
@@ -243,8 +241,6 @@ def async_setup(hass, config):
 
         away_mode = service.data.get(ATTR_AWAY_MODE)
 
-        _LOGGER.warning(
-            'This service has been deprecated; use climate.set_hold_mode')
         for climate in target_climate:
             if away_mode:
                 yield from climate.async_turn_away_mode_on()
@@ -696,18 +692,16 @@ class ClimateDevice(Entity):
 
     def _convert_for_display(self, temp):
         """Convert temperature into preferred units for display purposes."""
-        if (temp is None or not isinstance(temp, Number) or
-                self.temperature_unit == self.unit_of_measurement):
+        if temp is None or not isinstance(temp, Number):
             return temp
-
-        value = convert_temperature(temp, self.temperature_unit,
-                                    self.unit_of_measurement)
-
+        if self.temperature_unit != self.unit_of_measurement:
+            temp = convert_temperature(temp, self.temperature_unit,
+                                       self.unit_of_measurement)
         # Round in the units appropriate
         if self.precision == PRECISION_HALVES:
-            return round(value * 2) / 2.0
+            return round(temp * 2) / 2.0
         elif self.precision == PRECISION_TENTHS:
-            return round(value, 1)
+            return round(temp, 1)
         else:
             # PRECISION_WHOLE as a fall back
-            return round(value)
+            return round(temp)

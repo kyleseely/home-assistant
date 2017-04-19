@@ -34,7 +34,6 @@ ENTITY_ID_ALL_FANS = group.ENTITY_ID_FORMAT.format(GROUP_NAME_ALL_FANS)
 ENTITY_ID_FORMAT = DOMAIN + '.{}'
 
 # Bitfield of features supported by the fan entity
-ATTR_SUPPORTED_FEATURES = 'supported_features'
 SUPPORT_SET_SPEED = 1
 SUPPORT_OSCILLATE = 2
 SUPPORT_DIRECTION = 4
@@ -60,7 +59,6 @@ PROP_TO_ATTR = {
     'speed': ATTR_SPEED,
     'speed_list': ATTR_SPEED_LIST,
     'oscillating': ATTR_OSCILLATING,
-    'supported_features': ATTR_SUPPORTED_FEATURES,
     'direction': ATTR_DIRECTION,
 }  # type: dict
 
@@ -220,7 +218,7 @@ def async_setup(hass, config: dict):
             if not fan.should_poll:
                 continue
 
-            update_coro = hass.loop.create_task(
+            update_coro = hass.async_add_job(
                 fan.async_update_ha_state(True))
             if hasattr(fan, 'async_update'):
                 update_tasks.append(update_coro)

@@ -1,21 +1,22 @@
-"""Support for Rflink lights.
+"""
+Support for Rflink lights.
 
-For more details about this platform, please refer to the documentation
-at https://home-assistant.io/components/light.rflink/
-
+For more details about this platform, please refer to the documentation at
+https://home-assistant.io/components/light.rflink/
 """
 import asyncio
 import logging
 
-from homeassistant.components import group
 from homeassistant.components.light import (
     ATTR_BRIGHTNESS, SUPPORT_BRIGHTNESS, Light)
 from homeassistant.components.rflink import (
-    CONF_ALIASSES, CONF_DEVICE_DEFAULTS, CONF_DEVICES, CONF_FIRE_EVENT,
-    CONF_IGNORE_DEVICES, CONF_NEW_DEVICES_GROUP, CONF_SIGNAL_REPETITIONS,
-    DATA_DEVICE_REGISTER, DATA_ENTITY_LOOKUP, DEVICE_DEFAULTS_SCHEMA, DOMAIN,
-    EVENT_KEY_COMMAND, EVENT_KEY_ID, SwitchableRflinkDevice, cv, vol)
-from homeassistant.const import CONF_NAME, CONF_PLATFORM, CONF_TYPE
+    CONF_ALIASSES, CONF_AUTOMATIC_ADD, CONF_DEVICE_DEFAULTS, CONF_DEVICES,
+    CONF_FIRE_EVENT, CONF_GROUP, CONF_GROUP_ALIASSES, CONF_IGNORE_DEVICES,
+    CONF_NOGROUP_ALIASSES, CONF_SIGNAL_REPETITIONS, DATA_DEVICE_REGISTER,
+    DATA_ENTITY_GROUP_LOOKUP, DATA_ENTITY_LOOKUP, DEVICE_DEFAULTS_SCHEMA,
+    DOMAIN, EVENT_KEY_COMMAND, EVENT_KEY_ID, SwitchableRflinkDevice, cv, vol)
+from homeassistant.const import (
+    CONF_NAME, CONF_PLATFORM, CONF_TYPE, STATE_UNKNOWN)
 
 DEPENDENCIES = ['rflink']
 
@@ -24,32 +25,38 @@ _LOGGER = logging.getLogger(__name__)
 TYPE_DIMMABLE = 'dimmable'
 TYPE_SWITCHABLE = 'switchable'
 TYPE_HYBRID = 'hybrid'
+TYPE_TOGGLE = 'toggle'
 
 PLATFORM_SCHEMA = vol.Schema({
     vol.Required(CONF_PLATFORM): DOMAIN,
-    vol.Optional(CONF_NEW_DEVICES_GROUP, default=None): cv.string,
     vol.Optional(CONF_IGNORE_DEVICES): vol.All(cv.ensure_list, [cv.string]),
     vol.Optional(CONF_DEVICE_DEFAULTS, default=DEVICE_DEFAULTS_SCHEMA({})):
     DEVICE_DEFAULTS_SCHEMA,
+    vol.Optional(CONF_AUTOMATIC_ADD, default=True): cv.boolean,
     vol.Optional(CONF_DEVICES, default={}): vol.Schema({
         cv.string: {
             vol.Optional(CONF_NAME): cv.string,
             vol.Optional(CONF_TYPE):
-                vol.Any(TYPE_DIMMABLE, TYPE_SWITCHABLE, TYPE_HYBRID),
+                vol.Any(TYPE_DIMMABLE, TYPE_SWITCHABLE,
+                        TYPE_HYBRID, TYPE_TOGGLE),
             vol.Optional(CONF_ALIASSES, default=[]):
+                vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional(CONF_GROUP_ALIASSES, default=[]):
+                vol.All(cv.ensure_list, [cv.string]),
+            vol.Optional(CONF_NOGROUP_ALIASSES, default=[]):
                 vol.All(cv.ensure_list, [cv.string]),
             vol.Optional(CONF_FIRE_EVENT, default=False): cv.boolean,
             vol.Optional(CONF_SIGNAL_REPETITIONS): vol.Coerce(int),
+            vol.Optional(CONF_GROUP, default=True): cv.boolean,
         },
     }),
 })
 
 
 def entity_type_for_device_id(device_id):
-    """Return entity class for procotol of a given device_id.
+    """Return entity class for protocol of a given device_id.
 
     Async friendly.
-
     """
     entity_type_mapping = {
         # KlikAanKlikUit support both dimmers and on/off switches on the same
@@ -64,7 +71,6 @@ def entity_class_for_type(entity_type):
     """Translate entity type to entity class.
 
     Async friendly.
-
     """
     entity_device_mapping = {
         # sends only 'dim' commands not compatible with on/off switches
@@ -75,18 +81,21 @@ def entity_class_for_type(entity_type):
         # sends 'dim' and 'on' command to support both dimmers and on/off
         # switches. Not compatible with signal repetition.
         TYPE_HYBRID: HybridRflinkLight,
+        # sends only 'on' commands for switches which turn on and off
+        # using the same 'on' command for both.
+        TYPE_TOGGLE: ToggleRflinkLight,
     }
 
     return entity_device_mapping.get(entity_type, RflinkLight)
 
 
 def devices_from_config(domain_config, hass=None):
-    """Parse config and add rflink switch devices."""
+    """Parse configuration and add Rflink light devices."""
     devices = []
     for device_id, config in domain_config[CONF_DEVICES].items():
-        # determine which kind of entity to create
+        # Determine which kind of entity to create
         if CONF_TYPE in config:
-            # remove type from config to not pass it as and argument to entity
+            # Remove type from config to not pass it as and argument to entity
             # instantiation
             entity_type = config.pop(CONF_TYPE)
         else:
@@ -97,20 +106,36 @@ def devices_from_config(domain_config, hass=None):
 
         is_hybrid = entity_class is HybridRflinkLight
 
-        # make user aware this can cause problems
+        # Make user aware this can cause problems
         repetitions_enabled = device_config[CONF_SIGNAL_REPETITIONS] != 1
         if is_hybrid and repetitions_enabled:
             _LOGGER.warning(
                 "Hybrid type for %s not compatible with signal "
                 "repetitions. Please set 'dimmable' or 'switchable' "
-                "type explicity in configuration.",
-                device_id)
+                "type explicity in configuration", device_id)
 
         device = entity_class(device_id, hass, **device_config)
         devices.append(device)
 
-        # register entity (and aliasses) to listen to incoming rflink events
-        for _id in [device_id] + config[CONF_ALIASSES]:
+        # Register entity (and aliasses) to listen to incoming rflink events
+
+        # device id and normal aliasses respond to normal and group command
+        hass.data[DATA_ENTITY_LOOKUP][
+            EVENT_KEY_COMMAND][device_id].append(device)
+        if config[CONF_GROUP]:
+            hass.data[DATA_ENTITY_GROUP_LOOKUP][
+                EVENT_KEY_COMMAND][device_id].append(device)
+        for _id in config[CONF_ALIASSES]:
+            hass.data[DATA_ENTITY_LOOKUP][
+                EVENT_KEY_COMMAND][_id].append(device)
+            hass.data[DATA_ENTITY_GROUP_LOOKUP][
+                EVENT_KEY_COMMAND][_id].append(device)
+        # group_aliasses only respond to group commands
+        for _id in config[CONF_GROUP_ALIASSES]:
+            hass.data[DATA_ENTITY_GROUP_LOOKUP][
+                EVENT_KEY_COMMAND][_id].append(device)
+        # nogroup_aliasses only respond to normal commands
+        for _id in config[CONF_NOGROUP_ALIASSES]:
             hass.data[DATA_ENTITY_LOOKUP][
                 EVENT_KEY_COMMAND][_id].append(device)
 
@@ -119,16 +144,8 @@ def devices_from_config(domain_config, hass=None):
 
 @asyncio.coroutine
 def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
-    """Setup the Rflink platform."""
-    # add devices from config
-    yield from async_add_devices(devices_from_config(config, hass))
-
-    # add new (unconfigured) devices to user desired group
-    if config[CONF_NEW_DEVICES_GROUP]:
-        new_devices_group = yield from group.Group.async_create_group(
-            hass, config[CONF_NEW_DEVICES_GROUP], [], True)
-    else:
-        new_devices_group = None
+    """Set up the Rflink light platform."""
+    async_add_devices(devices_from_config(config, hass))
 
     @asyncio.coroutine
     def add_new_device(event):
@@ -140,21 +157,17 @@ def async_setup_platform(hass, config, async_add_devices, discovery_info=None):
 
         device_config = config[CONF_DEVICE_DEFAULTS]
         device = entity_class(device_id, hass, **device_config)
-        yield from async_add_devices([device])
+        async_add_devices([device])
 
-        # register entity to listen to incoming rflink events
+        # Register entity to listen to incoming Rflink events
         hass.data[DATA_ENTITY_LOOKUP][
             EVENT_KEY_COMMAND][device_id].append(device)
 
-        # make sure the event is processed by the new entity
-        device.handle_event(event)
+        # Schedule task to process event after entity is created
+        hass.async_add_job(device.handle_event, event)
 
-        # maybe add to new devices group
-        if new_devices_group:
-            yield from new_devices_group.async_update_tracked_entity_ids(
-                list(new_devices_group.tracking) + [device.entity_id])
-
-    hass.data[DATA_DEVICE_REGISTER][EVENT_KEY_COMMAND] = add_new_device
+    if config[CONF_AUTOMATIC_ADD]:
+        hass.data[DATA_DEVICE_REGISTER][EVENT_KEY_COMMAND] = add_new_device
 
 
 class RflinkLight(SwitchableRflinkDevice, Light):
@@ -202,7 +215,6 @@ class HybridRflinkLight(SwitchableRflinkDevice, Light):
     command are send sequential and multiple 'on' commands to a dimmable
     device can cause the dimmer to switch into a pulsating brightness mode.
     Which results in a nice house disco :)
-
     """
 
     _brightness = 255
@@ -221,7 +233,7 @@ class HybridRflinkLight(SwitchableRflinkDevice, Light):
         # if the receiving device does not support dimlevel this
         # will ensure it is turned on when full brightness is set
         if self._brightness == 255:
-            yield from self._async_handle_command("turn_on")
+            yield from self._async_handle_command('turn_on')
 
     @property
     def brightness(self):
@@ -232,3 +244,38 @@ class HybridRflinkLight(SwitchableRflinkDevice, Light):
     def supported_features(self):
         """Flag supported features."""
         return SUPPORT_BRIGHTNESS
+
+
+class ToggleRflinkLight(SwitchableRflinkDevice, Light):
+    """Rflink light device which sends out only 'on' commands.
+
+    Some switches like for example Livolo light switches use the
+    same 'on' command to switch on and switch off the lights.
+    If the light is on and 'on' gets sent, the light will turn off
+    and if the light is off and 'on' gets sent, the light will turn on.
+    """
+
+    @property
+    def entity_id(self):
+        """Return entity id."""
+        return "light.{}".format(self.name)
+
+    def _handle_event(self, event):
+        """Adjust state if Rflink picks up a remote command for this device."""
+        self.cancel_queued_send_commands()
+
+        command = event['command']
+        if command == 'on':
+            # if the state is unknown or false, it gets set as true
+            # if the state is true, it gets set as false
+            self._state = self._state in [STATE_UNKNOWN, False]
+
+    @asyncio.coroutine
+    def async_turn_on(self, **kwargs):
+        """Turn the device on."""
+        yield from self._async_handle_command('toggle')
+
+    @asyncio.coroutine
+    def async_turn_off(self, **kwargs):
+        """Turn the device off."""
+        yield from self._async_handle_command('toggle')
