@@ -154,6 +154,10 @@ omit =
     homeassistant/components/tado.py
     homeassistant/components/*/tado.py
 
+    homeassistant/components/zha/__init__.py
+    homeassistant/components/zha/const.py
+    homeassistant/components/*/zha.py
+
     homeassistant/components/alarm_control_panel/alarmdotcom.py
     homeassistant/components/alarm_control_panel/concord232.py
     homeassistant/components/alarm_control_panel/nx584.py
@@ -165,6 +169,7 @@ omit =
     homeassistant/components/binary_sensor/flic.py
     homeassistant/components/binary_sensor/hikvision.py
     homeassistant/components/binary_sensor/iss.py
+    homeassistant/components/binary_sensor/ping.py
     homeassistant/components/binary_sensor/rest.py
     homeassistant/components/browser.py
     homeassistant/components/camera/amcrest.py
@@ -230,11 +235,12 @@ omit =
     homeassistant/components/light/flux_led.py
     homeassistant/components/light/hue.py
     homeassistant/components/light/hyperion.py
-    homeassistant/components/light/lifx.py
+    homeassistant/components/light/lifx/*.py
     homeassistant/components/light/lifx_legacy.py
     homeassistant/components/light/limitlessled.py
     homeassistant/components/light/mystrom.py
     homeassistant/components/light/osramlightify.py
+    homeassistant/components/light/rpi_gpio_pwm.py
     homeassistant/components/light/piglow.py
     homeassistant/components/light/tikteck.py
     homeassistant/components/light/tradfri.py
@@ -281,6 +287,7 @@ omit =
     homeassistant/components/media_player/samsungtv.py
     homeassistant/components/media_player/snapcast.py
     homeassistant/components/media_player/sonos.py
+    homeassistant/components/media_player/spotify.py
     homeassistant/components/media_player/squeezebox.py
     homeassistant/components/media_player/vlc.py
     homeassistant/components/media_player/volumio.py
@@ -332,6 +339,7 @@ omit =
     homeassistant/components/sensor/broadlink.py
     homeassistant/components/sensor/dublin_bus_transport.py
     homeassistant/components/sensor/coinmarketcap.py
+    homeassistant/components/sensor/cert_expiry.py
     homeassistant/components/sensor/comed_hourly_pricing.py
     homeassistant/components/sensor/cpuspeed.py
     homeassistant/components/sensor/crimereports.py
@@ -383,10 +391,12 @@ omit =
     homeassistant/components/sensor/onewire.py
     homeassistant/components/sensor/openevse.py
     homeassistant/components/sensor/openexchangerates.py
+    homeassistant/components/sensor/opensky.py
     homeassistant/components/sensor/openweathermap.py
     homeassistant/components/sensor/pi_hole.py
     homeassistant/components/sensor/plex.py
     homeassistant/components/sensor/pocketcasts.py
+    homeassistant/components/sensor/pushbullet.py
     homeassistant/components/sensor/pvoutput.py
     homeassistant/components/sensor/qnap.py
     homeassistant/components/sensor/sabnzbd.py
